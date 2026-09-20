@@ -18,16 +18,28 @@ io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   socket.on("find-stranger", () => {
+    // Remove user from an existing match
     if (partners.has(socket.id)) {
       const oldPartner = partners.get(socket.id);
 
       partners.delete(socket.id);
       partners.delete(oldPartner);
 
-      io.to(oldPartner).emit("stranger-left");
+      io.to(oldPartner).emit("stranger-left", {
+        reason: "disconnected",
+      });
     }
 
-    if (waitingUser && waitingUser !== socket.id) {
+    // Don't add the same user to the queue twice
+    if (waitingUser === socket.id) {
+      return;
+    }
+
+    // Find someone waiting
+    if (
+      waitingUser &&
+      waitingUser !== socket.id
+    ) {
       const stranger = waitingUser;
       waitingUser = null;
 
@@ -72,13 +84,19 @@ io.on("connection", (socket) => {
       partners.delete(socket.id);
       partners.delete(partner);
 
-      io.to(partner).emit("stranger-left");
+      // Tell the other person their stranger left
+      io.to(partner).emit("stranger-left", {
+        reason: "disconnected",
+      });
     }
 
+    // Remove this user from the waiting queue
     if (waitingUser === socket.id) {
       waitingUser = null;
     }
 
+    // Tell the person who clicked NEXT
+    // that they can search again
     socket.emit("ready-for-next");
   });
 
@@ -93,7 +111,9 @@ io.on("connection", (socket) => {
       partners.delete(socket.id);
       partners.delete(partner);
 
-      io.to(partner).emit("stranger-left");
+      io.to(partner).emit("stranger-left", {
+        reason: "disconnected",
+      });
     }
 
     console.log(
