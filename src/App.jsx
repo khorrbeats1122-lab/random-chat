@@ -10,16 +10,22 @@ export default function App() {
   const peer = useRef(null);
   const audioSender = useRef(null);
   const micTrack = useRef(null);
+  const countdownTimer = useRef(null);
 
   const [started, setStarted] = useState(false);
   const [searching, setSearching] = useState(false);
   const [connected, setConnected] = useState(false);
   const [micOn, setMicOn] = useState(true);
   const [error, setError] = useState("");
+  const [countdown, setCountdown] = useState(15);
+  const [disconnectedMessage, setDisconnectedMessage] =
+    useState(false);
 
   useEffect(() => {
     const handleMatch = ({ strangerId, initiator }) => {
       setSearching(false);
+      setDisconnectedMessage(false);
+      setCountdown(15);
 
       const connection = createPeer(strangerId);
       peer.current = connection;
@@ -88,6 +94,8 @@ export default function App() {
     };
 
     const handleStrangerLeft = () => {
+      clearCountdown();
+
       closePeer();
 
       if (remoteVideo.current) {
@@ -95,9 +103,16 @@ export default function App() {
       }
 
       setConnected(false);
-      setSearching(true);
+      setCountdown(15);
+      setDisconnectedMessage(true);
+      setSearching(false);
 
-      socket.emit("find-stranger");
+      setTimeout(() => {
+        setDisconnectedMessage(false);
+        setSearching(true);
+
+        socket.emit("find-stranger");
+      }, 1800);
     };
 
     socket.on("matched", handleMatch);
@@ -111,8 +126,46 @@ export default function App() {
         "stranger-left",
         handleStrangerLeft
       );
+
+      clearCountdown();
     };
   }, []);
+
+  useEffect(() => {
+    if (!connected) {
+      clearCountdown();
+      return;
+    }
+
+    setCountdown(15);
+
+    countdownTimer.current = setInterval(() => {
+      setCountdown((current) => {
+        if (current <= 1) {
+          clearCountdown();
+
+          setTimeout(() => {
+            nextStranger();
+          }, 0);
+
+          return 0;
+        }
+
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => {
+      clearCountdown();
+    };
+  }, [connected]);
+
+  function clearCountdown() {
+    if (countdownTimer.current) {
+      clearInterval(countdownTimer.current);
+      countdownTimer.current = null;
+    }
+  }
 
   function createPeer(strangerId) {
     const connection = new RTCPeerConnection({
@@ -153,6 +206,8 @@ export default function App() {
 
       setConnected(true);
       setSearching(false);
+      setDisconnectedMessage(false);
+      setCountdown(15);
     };
 
     connection.onicecandidate = (event) => {
@@ -174,6 +229,8 @@ export default function App() {
       ) {
         setConnected(true);
         setSearching(false);
+        setDisconnectedMessage(false);
+        setCountdown(15);
       }
 
       if (
@@ -190,6 +247,8 @@ export default function App() {
   }
 
   function closePeer() {
+    clearCountdown();
+
     if (peer.current) {
       peer.current.ontrack = null;
       peer.current.onicecandidate = null;
@@ -228,6 +287,8 @@ export default function App() {
       setSearching(true);
       setConnected(false);
       setMicOn(true);
+      setDisconnectedMessage(false);
+      setCountdown(15);
 
       socket.emit("find-stranger");
     } catch (err) {
@@ -281,6 +342,7 @@ export default function App() {
   }
 
   function nextStranger() {
+    clearCountdown();
     closePeer();
 
     if (remoteVideo.current) {
@@ -289,6 +351,8 @@ export default function App() {
 
     setConnected(false);
     setSearching(true);
+    setDisconnectedMessage(false);
+    setCountdown(15);
 
     socket.emit("next");
 
@@ -298,6 +362,7 @@ export default function App() {
   }
 
   function stopChat() {
+    clearCountdown();
     closePeer();
 
     if (localStream.current) {
@@ -324,6 +389,8 @@ export default function App() {
     setSearching(false);
     setConnected(false);
     setMicOn(true);
+    setCountdown(15);
+    setDisconnectedMessage(false);
     micTrack.current = null;
   }
 
@@ -339,16 +406,34 @@ export default function App() {
 
         {!connected && (
           <div className="search-screen">
-            <div className="search-logo">
-              RANDOM
-            </div>
+            <img
+              src="/strangr-logo.png"
+              alt="STRANGR"
+              className="search-logo"
+            />
 
-            {searching ? (
+            {disconnectedMessage ? (
+              <>
+                <div className="question-mark">
+                  !
+                </div>
+
+                <h2>
+                  Person disconnected
+                </h2>
+
+                <p>
+                  Finding someone new...
+                </p>
+              </>
+            ) : searching ? (
               <>
                 <div className="loader" />
+
                 <h2>
                   Finding someone...
                 </h2>
+
                 <p>
                   Searching for your next chat
                 </p>
@@ -368,6 +453,12 @@ export default function App() {
                 </p>
               </>
             )}
+          </div>
+        )}
+
+        {connected && (
+          <div className="countdown">
+            NEXT IN {countdown}
           </div>
         )}
 
@@ -433,6 +524,13 @@ export default function App() {
             onClick={nextStranger}
           >
             NEXT →
+          </button>
+
+          <button
+            className="home-button"
+            onClick={stopChat}
+          >
+            HOME
           </button>
         </div>
       )}
